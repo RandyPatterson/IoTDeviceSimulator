@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 namespace IoTDeviceSimulator
 {
+    /// <summary>
+    /// Device Simulator that generates a random temperature and sends telemetry to an IoT Hub
+    /// </summary>
     internal class Program
     {
         private static DeviceClient deviceClient;
@@ -57,6 +60,7 @@ namespace IoTDeviceSimulator
                         temperature = currentTemperature,
                     };
 
+                    //Convert telemetry to JSON format
                     string messageString = JsonConvert.SerializeObject(telemetryDataPoint);
                     var message = new Message(Encoding.ASCII.GetBytes(messageString));
 
@@ -64,6 +68,7 @@ namespace IoTDeviceSimulator
                     await deviceClient.SendEventAsync(message);
                     Console.WriteLine($"{DateTime.Now} > Sending message: {messageString}");
                 }
+
                 await Task.Delay(freq);
             }
         }
