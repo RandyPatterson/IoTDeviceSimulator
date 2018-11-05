@@ -72,8 +72,13 @@ namespace IoTDeviceSimulator
                     // An IoT hub can filter on these properties without access to the message body.
                     message.Properties.Add("temperatureAlert", currentTemperature > 28 ? "true" : "false");
 
-                    await deviceClient.SendEventAsync(message);
-                    Console.WriteLine($"{DateTime.Now} > Sending message: {messageString}");
+                    //Send Message to IoT Hub
+                    try {
+                        await deviceClient.SendEventAsync(message);
+                        ConsoleWrite($"{DateTime.Now} > Sending message: {messageString}");
+                    } catch (Exception ex) {
+                        ConsoleWrite($"Error: {ex.Message}", ConsoleColor.Red);
+                    }
                 }
                 await Task.Delay(freq);
             }
@@ -156,10 +161,9 @@ namespace IoTDeviceSimulator
             }
         }
 
-        private static void ConsoleWrite(string message, ConsoleColor? color = null)
+        private static void ConsoleWrite(string message, ConsoleColor color = ConsoleColor.White)
         {
-            if (color.HasValue)
-                Console.ForegroundColor = color.Value;
+            Console.ForegroundColor = color;
             Console.WriteLine(message);
             Console.ResetColor();
         }
