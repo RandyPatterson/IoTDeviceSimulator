@@ -74,13 +74,19 @@ namespace IoTDeviceSimulator
         }
 
         /// <summary>
-        ///     Background task for checking for incoming messages from service.
+        ///     Background task for receiving Cloud to Device messages.
         /// </summary>
         private static async void ReceiveCloudToDeviceAsync()
         {
 
         }
 
+        /// <summary>
+        /// Direct Method to stop sending telemetry
+        /// </summary>
+        /// <param name="methodRequest"></param>
+        /// <param name="userContext"></param>
+        /// <returns></returns>
         private static async Task<MethodResponse> StopTelemetry(MethodRequest methodRequest, object userContext)
         {
             //Send response back to caller
