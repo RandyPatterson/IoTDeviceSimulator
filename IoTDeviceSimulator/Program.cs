@@ -73,7 +73,7 @@ namespace IoTDeviceSimulator
                     message.Properties.Add("temperatureAlert", currentTemperature > 28 ? "true" : "false");
 
                     await deviceClient.SendEventAsync(message);
-                    Console.WriteLine($"{DateTime.Now} > Sending message: {messageString},{delta}");
+                    Console.WriteLine($"{DateTime.Now} > Sending message: {messageString}");
                 }
                 await Task.Delay(freq);
             }
