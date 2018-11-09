@@ -2,18 +2,22 @@
 using Microsoft.Azure.Devices.Shared;
 using Newtonsoft.Json;
 using System;
+using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace IoTDeviceSimulator
 {
+    /// <summary>
+    /// Device Simulator that generates a random temperature and sends telemetry to an IoT Hub
+    /// </summary>
     internal class Program
     {
         private static DeviceClient deviceClient;
-        private const string deviceConnString = "HostName=MyDevices.azure-devices.net;DeviceId=DevSim01;SharedAccessKey=r1Wq1EA2jvUvbiUPvkQoOv2lNNmTvhHXSAdYY5WnYqY=";
+        private const string deviceConnString = "[replace with your connection string]";
         private const string deviceId = "DevSim01";
         private static readonly TwinCollection twinProperties = new TwinCollection();
-        private static volatile int freq = 1000;
+        private static volatile int freq = 5000;
         private static volatile bool _sendTelemetry = true;
 
         public static void Main(string[] args)
@@ -21,9 +25,6 @@ namespace IoTDeviceSimulator
             ConsoleWrite("Simulated device. Press any key to exit.\n");
             deviceClient = DeviceClient.CreateFromConnectionString(deviceConnString, TransportType.Mqtt);
             deviceClient.ProductInfo = "IoT Workshop Simulated Device";
-
-            //Set callback method when Desired Twin property changes
-            deviceClient.SetDesiredPropertyUpdateCallbackAsync(OnDesiredPropertyChanged, null).Wait();
 
             //Start sending Telemetry as a background thread
             SendDeviceToCloudMessagesAsync();
@@ -34,6 +35,10 @@ namespace IoTDeviceSimulator
             //Setup Direct Methods
             deviceClient.SetMethodHandlerAsync("start", StartTelemetry, null);
             deviceClient.SetMethodHandlerAsync("stop", StopTelemetry, null);
+            deviceClient.SetMethodHandlerAsync("upload", UploadFileAsync, null);
+
+            //Set callback method when Desired Twin property changes
+            deviceClient.SetDesiredPropertyUpdateCallbackAsync(OnDesiredPropertyChanged, null).Wait();
 
             Console.ReadKey();
         }
@@ -65,27 +70,28 @@ namespace IoTDeviceSimulator
                         temperature = currentTemperature,
                     };
 
+                    //Convert telemetry to JSON format
                     string messageString = JsonConvert.SerializeObject(telemetryDataPoint);
                     var message = new Message(Encoding.ASCII.GetBytes(messageString));
 
-                    // Add a custom application property to the message.
-                    // An IoT hub can filter on these properties without access to the message body.
-                    message.Properties.Add("temperatureAlert", currentTemperature > 28 ? "true" : "false");
-
                     //Send Message to IoT Hub
-                    try {
+                    try
+                    {
                         await deviceClient.SendEventAsync(message);
                         ConsoleWrite($"{DateTime.Now} > Sending message: {messageString}");
-                    } catch (Exception ex) {
+                    }
+                    catch (Exception ex)
+                    {
                         ConsoleWrite($"Error: {ex.Message}", ConsoleColor.Red);
                     }
                 }
+
                 await Task.Delay(freq);
             }
         }
 
         /// <summary>
-        ///     Background task for checking for incoming messages from service.
+        ///     Background task for receiving Cloud to Device messages.
         /// </summary>
         private static async void ReceiveCloudToDeviceAsync()
         {
@@ -97,23 +103,25 @@ namespace IoTDeviceSimulator
                     continue;
 
                 string payload = Encoding.ASCII.GetString(receivedMessage.GetBytes());
-                dynamic message = JsonConvert.DeserializeObject(payload);
                 ConsoleWrite($"\n{payload}", ConsoleColor.Yellow);
                 //Let IoT Hub know message was successfully received
                 await deviceClient.CompleteAsync(receivedMessage);
             }
         }
 
+        /// <summary>
+        /// Direct Method to stop sending telemetry
+        /// </summary>
+        /// <param name="methodRequest"></param>
+        /// <param name="userContext"></param>
+        /// <returns></returns>
         private static async Task<MethodResponse> StopTelemetry(MethodRequest methodRequest, object userContext)
         {
             _sendTelemetry = false;
             ConsoleWrite($"\n{ DateTime.Now} Telemetry Stopped", ConsoleColor.Blue);
 
-            twinProperties["Telemetry"] = "Stopped";
-            await deviceClient.UpdateReportedPropertiesAsync(twinProperties);
-            var result = "{'message':'Stop Succeeded'}";
-
             //Send response back to caller
+            var result = "{'message':'Stop Succeeded'}";
             return new MethodResponse(Encoding.UTF8.GetBytes(result), 200);
         }
 
@@ -122,17 +130,30 @@ namespace IoTDeviceSimulator
             _sendTelemetry = true;
             ConsoleWrite($"\n{ DateTime.Now} Telemetry Started", ConsoleColor.Blue);
 
-            twinProperties["Telemetry"] = "Started";
-            await deviceClient.UpdateReportedPropertiesAsync(twinProperties);
-            var result = "{'message':'Start Succeeded'}";
-
             //Send response back to caller
+            var result = "{'message':'Start Succeeded'}";
             return new MethodResponse(Encoding.UTF8.GetBytes(result), 200);
         }
 
+        /// <summary>
+        /// Direct Method to upload files
+        /// </summary>
+        /// <param name="methodRequest"></param>
+        /// <param name="userContext"></param>
+        /// <returns></returns>
         private static async Task<MethodResponse> UploadFileAsync(MethodRequest methodRequest, object userContext)
         {
-            return await Task.FromResult(new MethodResponse(0));
+            string fileName = @"image1.jpg";
+            string blobName = $"image-{DateTime.UtcNow.ToString("s")}.jpg";
+            using (var sourceData = new FileStream(fileName, FileMode.Open))
+            {
+                //Upload file to blob storage
+                await deviceClient.UploadToBlobAsync(blobName, sourceData);
+                ConsoleWrite($"Uploaded to blob file: {blobName}", ConsoleColor.Blue);
+            }
+            var message = $"'File {fileName} was uploaded to blob storage as {blobName}'";
+            //Return success to IoT Hub
+            return new MethodResponse(Encoding.UTF8.GetBytes(message), 200);
         }
 
         /// <summary>
