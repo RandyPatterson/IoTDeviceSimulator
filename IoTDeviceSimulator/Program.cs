@@ -19,6 +19,7 @@ namespace IoTDeviceSimulator
         private static readonly TwinCollection twinProperties = new TwinCollection();
         private static volatile int freq = 5000;
         private static volatile bool _sendTelemetry = true;
+        private static decimal _currentTemperature = 26; //starting temperature
 
         public static void Main(string[] args)
         {
@@ -36,6 +37,7 @@ namespace IoTDeviceSimulator
             deviceClient.SetMethodHandlerAsync("start", StartTelemetry, null);
             deviceClient.SetMethodHandlerAsync("stop", StopTelemetry, null);
             deviceClient.SetMethodHandlerAsync("upload", UploadFileAsync, null);
+            deviceClient.SetMethodHandlerAsync("temperature", SetTemperature, null);
 
             //Set callback method when Desired Twin property changes
             deviceClient.SetDesiredPropertyUpdateCallbackAsync(OnDesiredPropertyChanged, null).Wait();
@@ -48,7 +50,6 @@ namespace IoTDeviceSimulator
         /// </summary>
         private static async void SendDeviceToCloudMessagesAsync()
         {
-            decimal currentTemperature = 26; //starting temperature in Celsius
             int messageId = 1;
             Random rand = new Random(DateTime.Now.Millisecond);
 
@@ -59,15 +60,15 @@ namespace IoTDeviceSimulator
                     //Generate a random number
                     decimal delta = (decimal)Math.Round(rand.NextDouble(), 2);
                     //Odd numbers positive, Even negative
-                    delta = delta * (delta * 100 % 2 == 0 ? -1 : 1);
+                    delta *= (delta * 100 % 2 == 0 ? -1 : 1);
                     //increase or decrease the temperature by a random amount
-                    currentTemperature += delta;
+                    _currentTemperature += delta;
 
                     var telemetryDataPoint = new
                     {
                         deviceId = deviceId,
                         messageId = messageId++,
-                        temperature = currentTemperature,
+                        temperature = _currentTemperature,
                     };
 
                     //Convert telemetry to JSON format
@@ -125,6 +126,12 @@ namespace IoTDeviceSimulator
             return new MethodResponse(Encoding.UTF8.GetBytes(result), 200);
         }
 
+        /// <summary>
+        /// Direct Method to start sending telemetry
+        /// </summary>
+        /// <param name="methodRequest"></param>
+        /// <param name="userContext"></param>
+        /// <returns></returns>
         private static async Task<MethodResponse> StartTelemetry(MethodRequest methodRequest, object userContext)
         {
             _sendTelemetry = true;
@@ -157,6 +164,32 @@ namespace IoTDeviceSimulator
         }
 
         /// <summary>
+        /// Direct method to change the current temperature. Useful for testing alerts
+        /// </summary>
+        /// <param name="methodRequest"></param>
+        /// <param name="userContext"></param>
+        /// <returns></returns>
+        private static async Task<MethodResponse> SetTemperature(MethodRequest methodRequest, object userContext)
+        {
+            var result = "{'message':'Set Temperature Succeeded'}";
+            decimal payload;
+            if (decimal.TryParse(methodRequest.DataAsJson, out payload))
+            {
+                _currentTemperature = payload;
+                ConsoleWrite($"Set Temperature to {payload}", ConsoleColor.Green);
+                return new MethodResponse(Encoding.UTF8.GetBytes(result), 200);
+            }
+            else
+            {
+                result = "{'message':'Set Temperature Failed: Temperature not passed in or not a number'}";
+                ConsoleWrite(result, ConsoleColor.Red);
+                return new MethodResponse(Encoding.UTF8.GetBytes(result), 400);
+            }
+
+
+        }
+
+        /// <summary>
         ///     Notification when a Desired Twin Property Changes
         /// </summary>
         /// <param name="desiredProperties"></param>
@@ -182,6 +215,12 @@ namespace IoTDeviceSimulator
             }
         }
 
+        /// <summary>
+        /// helper method to display messages in color to the console. Resets to original text color when finished
+        /// </summary>
+        /// <param name="message">Message to display</param>
+        /// <param name="color">The <see cref="ConsoleColor">Color</see> to display text 
+        /// or <see cref="ConsoleColor.White">White</see> if not specified</param>
         private static void ConsoleWrite(string message, ConsoleColor color = ConsoleColor.White)
         {
             Console.ForegroundColor = color;
